@@ -2,6 +2,17 @@ import streamlit as st
 from ultralytics import YOLO
 import cv2
 import numpy as np
+import torch
+
+# -----------------------------------------------------------------------------
+# CORREÇÃO DE SEGURANÇA (Compatibilidade PyTorch / Ultralytics)
+# -----------------------------------------------------------------------------
+# Libera as classes do YOLO na lista de permissões seguras de serialização do PyTorch
+try:
+    import ultralytics.nn.tasks
+    torch.serialization.add_safe_globals([ultralytics.nn.tasks.DetectionModel, YOLO])
+except ImportError:
+    pass
 
 # -----------------------------------------------------------------------------
 # 1. Configuração da Página do Streamlit
@@ -21,10 +32,9 @@ st.write("Protótipo funcional para detecção de objetos via webcam.")
 @st.cache_resource
 def load_yolo_model():
     """
-    Carrega o modelo YOLOv8 Nano. 
-    O decorator cache_resource garante que o modelo seja carregado apenas uma vez.
+    Carrega o modelo YOLOv8 Nano de forma otimizada.
+    O cache do Streamlit evita recargas custosas de memória a cada interação.
     """
-    # Utiliza o modelo nano (yolov8n.pt) por ser leve e ideal para deploys em nuvem (Render)
     return YOLO("yolov8n.pt")
 
 model = load_yolo_model()
@@ -32,39 +42,39 @@ model = load_yolo_model()
 # -----------------------------------------------------------------------------
 # 4. Controle da Câmera via Interface do Usuário
 # -----------------------------------------------------------------------------
-# Botão para ativar/desativar o fluxo da câmera
+# Botão de ativação do fluxo de vídeo local
 click = st.checkbox("🔄 Ligar Câmera para Detecção")
 
-# Espaço reservado na interface para atualizar os frames do vídeo continuamente
+# Container dinâmico onde os frames atualizados serão renderizados
 FRAME_WINDOW = st.image([])
 
 # -----------------------------------------------------------------------------
 # 3. Acesso à Câmera e Processamento de Detecção
 # -----------------------------------------------------------------------------
 if click:
-    # Inicializa a captura de vídeo da webcam local (índice 0)
+    # Inicializa o dispositivo de captura padrão (Webcam local)
     camera = cv2.VideoCapture(0)
     
-    # Loop de renderização contínua enquanto o checkbox estiver marcado
+    # Loop de execução contínua enquanto o componente estiver marcado como True
     while click:
         success, frame = camera.read()
         if not success:
-            st.error("Não foi possível acessar a câmera.")
+            st.error("Não foi possível acessar a câmera local ou o dispositivo está ocupado.")
             break
             
-        # O OpenCV captura em BGR, o Streamlit e o YOLO operam melhor em RGB
+        # Converte o padrão de cor nativo do OpenCV (BGR) para o padrão do Streamlit/YOLO (RGB)
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
-        # Executa a inferência do YOLO no frame atual
+        # Executa o algoritmo de inferência no frame atual obtido
         results = model(frame_rgb, verbose=False)
         
-        # Desenha as caixas delimitadoras e rótulos diretamente no frame processado
+        # Plota as caixas delimitadoras e os rótulos de identificação sobre a imagem
         annotated_frame = results[0].plot()
         
-        # Atualiza a imagem na interface do Streamlit em tempo real
+        # Renderiza a imagem atualizada no painel do Streamlit
         FRAME_WINDOW.image(annotated_frame, channels="RGB")
         
-    # Libera os recursos do hardware ao desmarcar o botão
+    # Liberação imediata do hardware assim que o ciclo for encerrado pelo usuário
     camera.release()
 else:
     st.info("Clique no botão acima para iniciar o scanner.")
